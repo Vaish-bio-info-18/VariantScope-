@@ -1,0 +1,158 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="VariantScope: a synthetic-data genomic variant exploration dashboard.">
+  <title>VariantScope | Genomic Explorer</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="data.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a href="#" class="brand">
+      <span class="brand-icon">🧬</span>
+      <span><strong>VariantScope</strong><small>GENOMIC EXPLORER</small></span>
+    </a>
+    <p class="nav-heading">WORKSPACE</p>
+    <a class="nav-link active" href="#overview">▦ &nbsp; Overview</a>
+    <a class="nav-link" href="#variants">⌕ &nbsp; Variant Explorer</a>
+    <a class="nav-link" href="#insights">◌ &nbsp; Insights</a>
+    <div class="sidebar-bottom">
+      <span class="status-dot"></span>
+      <strong>Demo environment</strong>
+      <p>Synthetic data only</p>
+    </div>
+  </aside>
+
+  <main class="main-content" id="overview">
+    <header class="topbar">
+      <span>Workspace / <strong>Variant Explorer</strong></span>
+      <span class="demo-badge">● SYNTHETIC DEMO</span>
+    </header>
+
+    <section class="page-heading">
+      <div>
+        <p class="eyebrow">BIOMEDICAL INFORMATICS</p>
+        <h1>Variant explorer<span class="accent">.</span></h1>
+        <p class="subtitle">Explore, filter, and inspect an illustrative genomic variant dataset.</p>
+      </div>
+      <button id="export-btn" class="primary-button">↓ Export filtered CSV</button>
+    </section>
+
+    <section class="notice">
+      <strong>ⓘ Educational demo only.</strong>
+      All records and labels are synthetic or illustrative. This prototype is
+      not clinically validated and must not be used for diagnosis or patient-care decisions.
+    </section>
+
+    <section class="stats-grid" aria-label="Dataset summary">
+      <article class="stat-card">
+        <span>Total variants</span>
+        <strong id="total-variants">0</strong>
+        <small>Records in current view</small>
+      </article>
+      <article class="stat-card">
+        <span>Unique genes</span>
+        <strong id="unique-genes">0</strong>
+        <small>Distinct gene labels</small>
+      </article>
+      <article class="stat-card">
+        <span>High demo scores</span>
+        <strong id="high-scores">0</strong>
+        <small>Illustrative score ≥ 20</small>
+      </article>
+      <article class="stat-card">
+        <span>Rare variants</span>
+        <strong id="rare-variants">0</strong>
+        <small>Demo frequency &lt; 1%</small>
+      </article>
+    </section>
+
+    <section class="charts-grid" id="insights">
+      <article class="panel">
+        <h2>Consequence landscape</h2>
+        <p class="panel-description">Records grouped by consequence category</p>
+        <div class="chart-container">
+          <canvas id="consequence-chart"></canvas>
+        </div>
+      </article>
+      <article class="panel">
+        <h2>Frequency distribution</h2>
+        <p class="panel-description">Illustrative allele-frequency bands</p>
+        <div class="chart-container">
+          <canvas id="frequency-chart"></canvas>
+        </div>
+      </article>
+    </section>
+
+    <section class="panel variants-panel" id="variants">
+      <div class="section-heading">
+        <div>
+          <h2>Variant records</h2>
+          <p class="panel-description">Search the dataset and refine the results.</p>
+        </div>
+        <span id="result-count" class="result-count">0 records</span>
+      </div>
+
+      <div class="filters">
+        <input id="search-input" type="search"
+          placeholder="Search gene, variant ID, consequence...">
+        <select id="consequence-filter" aria-label="Filter by consequence">
+          <option value="">All consequences</option>
+        </select>
+        <select id="classification-filter" aria-label="Filter by demo label">
+          <option value="">All demo labels</option>
+        </select>
+        <button id="reset-btn" class="secondary-button">Reset</button>
+      </div>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>VARIANT / GENE</th>
+              <th>CONSEQUENCE</th>
+              <th>PROTEIN CHANGE</th>
+              <th>ALLELE FREQ.</th>
+              <th>DEMO SCORE</th>
+              <th>ILLUSTRATIVE LABEL</th>
+              <th>DETAILS</th>
+            </tr>
+          </thead>
+          <tbody id="variant-rows">
+            <tr><td colspan="7">Loading demo dataset...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="table-footer">
+        <span id="showing-text">Loading records...</span>
+        <div>
+          <button id="prev-page" class="page-button" aria-label="Previous page">‹</button>
+          <span id="page-label">1 / 1</span>
+          <button id="next-page" class="page-button" aria-label="Next page">›</button>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      VariantScope · Portfolio prototype · HTML, CSS and JavaScript
+    </footer>
+  </main>
+
+  <dialog id="variant-dialog">
+    <div class="dialog-header">
+      <h2 id="dialog-title">Variant details</h2>
+      <button id="close-dialog" class="secondary-button">Close</button>
+    </div>
+    <p class="notice">Synthetic demonstration record. Not for clinical interpretation.</p>
+    <div id="dialog-body" class="detail-grid"></div>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
