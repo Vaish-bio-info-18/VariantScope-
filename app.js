@@ -1,56 +1,58 @@
 
 /*
  * VariantScope | Dashboard Application
- *
- * Uses synthetic demonstration data from data.js.
- * This application is an educational prototype, not a clinical
- * variant interpretation or diagnostic system.
+ * Supports synthetic demo data and uploaded VCF records.
+ * Gene annotation through Ensembl VEP is not connected yet.
+ * Research use only. Not a clinical diagnostic tool.
  */
 
 (() => {
   "use strict";
 
-  // ---------- DOM references ----------
+  const $ = (id) => document.getElementById(id);
 
   const elements = {
-    totalVariants: document.getElementById("total-variants"),
-    uniqueGenes: document.getElementById("unique-genes"),
-    highScores: document.getElementById("high-scores"),
-    rareVariants: document.getElementById("rare-variants"),
+    totalVariants: $("total-variants"),
+    uniqueGenes: $("unique-genes"),
+    highScores: $("high-scores"),
+    rareVariants: $("rare-variants"),
 
-    searchInput: document.getElementById("search-input"),
-    consequenceFilter: document.getElementById("consequence-filter"),
-    classificationFilter: document.getElementById("classification-filter"),
-    resetButton: document.getElementById("reset-btn"),
+    searchInput: $("search-input"),
+    consequenceFilter: $("consequence-filter"),
+    classificationFilter: $("classification-filter"),
+    resetButton: $("reset-btn"),
 
-    tableBody: document.getElementById("variant-rows"),
-    resultCount: document.getElementById("result-count"),
-    previousPage: document.getElementById("prev-page"),
-    nextPage: document.getElementById("next-page"),
-    pageLabel: document.getElementById("page-label"),
-    showingText: document.getElementById("showing-text"),
+    tableBody: $("variant-rows"),
+    resultCount: $("result-count"),
+    previousPage: $("prev-page"),
+    nextPage: $("next-page"),
+    pageLabel: $("page-label"),
+    showingText: $("showing-text"),
 
-    exportButton: document.getElementById("export-btn"),
+    exportButton: $("export-btn"),
 
-    dialog: document.getElementById("variant-dialog"),
-    dialogTitle: document.getElementById("dialog-title"),
-    dialogBody: document.getElementById("dialog-body"),
-    closeDialog: document.getElementById("close-dialog"),
+    dialog: $("variant-dialog"),
+    dialogTitle: $("dialog-title"),
+    dialogBody: $("dialog-body"),
+    closeDialog: $("close-dialog"),
 
-    toast: document.getElementById("toast")
+    toast: $("toast")
   };
-
-  // ---------- Application state ----------
 
   const PAGE_SIZE = 8;
 
+  let allVariants = Array.isArray(variantData)
+    ? [...variantData]
+    : [];
+
+  let filteredVariants = [...allVariants];
   let currentPage = 1;
-  let filteredVariants = [...variantData];
+  let dataSource = "demo";
   let consequenceChart = null;
   let frequencyChart = null;
   let toastTimeout = null;
 
-  // ---------- Safe formatting helpers ----------
+  // ---------- Safe formatting ----------
 
   function escapeHTML(value) {
     return String(value ?? "")
@@ -61,176 +63,234 @@
       .replace(/'/g, "&#39;");
   }
 
-  function formatInteger(value) {
-    return Number(value).toLocaleString("en-US");
+  function numberLabel(value) {
+    return Number(value || 0).toLocaleString("en-US");
   }
 
-  function formatPosition(value) {
-    return Number(value).toLocaleString("en-US");
+  function frequencyLabel(value) {
+    if (
+      value === null ||
+      value === undefined ||
+      value === "" ||
+      !Number.isFinite(Number(value))
+    ) {
+      return "Not provided";
+    }
+
+    return `${(Number(value) * 100).toPrecision(3)}%`;
   }
 
-  function formatOptionalScore(value) {
-    return typeof value === "number" && Number.isFinite(value)
-      ? value.toFixed(2)
-      : "N/A";
+  function normalizeImpact(value) {
+    const impact = String(value || "").toLowerCase();
+
+    if (impact === "high") return "High";
+    if (impact === "moderate") return "Moderate";
+    if (impact === "low") return "Low";
+    if (impact === "modifier") return "Modifier";
+
+    return "Unknown";
   }
 
-  function formatPercentage(value) {
-    if (!Number.isFinite(value)) return "N/A";
-    return `${(value * 100).toFixed(2)}%`;
-  }
-
-  function getFrequencyLabel(value) {
-    return typeof formatFrequency === "function"
-      ? formatFrequency(value)
-      : formatPercentage(value);
-  }
-
-  function showToast(message) {
+  function notify(message) {
     if (!elements.toast) return;
 
     elements.toast.textContent = message;
     elements.toast.classList.add("show");
 
-    if (toastTimeout) {
-      clearTimeout(toastTimeout);
-    }
+    if (toastTimeout) clearTimeout(toastTimeout);
 
     toastTimeout = setTimeout(() => {
       elements.toast.classList.remove("show");
-    }, 2800);
+    }, 3000);
   }
 
-  // ---------- Summary statistics ----------
+  function getUniqueGeneCount(records) {
+    return new Set(
+      records
+        .map((record) => record.gene)
+        .filter((gene) =>
+          gene &&
+          gene !== "Pending annotation" &&
+          gene !== "Unknown" &&
+          gene !== "Not provided"
+        )
+    ).size;
+  }
+
+  function getRareVariantCount(records) {
+    return records.filter((record) => {
+      const af = record.alleleFrequency;
+
+      return af !== null &&
+        af !== undefined &&
+        Number.isFinite(Number(af)) &&
+        Number(af) <= 0.01;
+    }).length;
+  }
+
+  // ---------- Statistics ----------
 
   function updateStatistics(records) {
     if (elements.totalVariants) {
-      elements.totalVariants.textContent = formatInteger(records.length);
+      elements.totalVariants.textContent = numberLabel(records.length);
     }
 
     if (elements.uniqueGenes) {
-      elements.uniqueGenes.textContent = formatInteger(
-        getUniqueGeneCount(records)
-      );
+      elements.uniqueGenes.textContent =
+        numberLabel(getUniqueGeneCount(records));
     }
 
     if (elements.highScores) {
-      const highImpactCount = records.filter(
-        (variant) => variant.impact === "High"
-      ).length;
-
-      elements.highScores.textContent = formatInteger(highImpactCount);
+      elements.highScores.textContent = numberLabel(
+        records.filter((record) =>
+          normalizeImpact(record.impact) === "High"
+        ).length
+      );
     }
 
     if (elements.rareVariants) {
-      elements.rareVariants.textContent = formatInteger(
-        getRareVariantCount(records)
-      );
+      elements.rareVariants.textContent =
+        numberLabel(getRareVariantCount(records));
     }
   }
 
-  // ---------- Search and filters ----------
+  // ---------- Filter dropdowns ----------
+
+  function populateFilterOptions() {
+    const filters = [
+      {
+        element: elements.consequenceFilter,
+        field: "consequence",
+        placeholder: "All consequences"
+      },
+      {
+        element: elements.classificationFilter,
+        field: "classification",
+        placeholder: "All classifications"
+      }
+    ];
+
+    filters.forEach(({ element, field, placeholder }) => {
+      if (!element) return;
+
+      const previousValue = element.value;
+
+      const values = [...new Set(
+        allVariants
+          .map((record) => record[field])
+          .filter((value) =>
+            value &&
+            value !== "Pending annotation" &&
+            value !== "Unknown"
+          )
+      )].sort();
+
+      element.replaceChildren();
+
+      const allOption = document.createElement("option");
+      allOption.value = "all";
+      allOption.textContent = placeholder;
+      element.appendChild(allOption);
+
+      values.forEach((value) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value;
+        element.appendChild(option);
+      });
+
+      element.value = values.includes(previousValue)
+        ? previousValue
+        : "all";
+    });
+  }
+
+  // ---------- Filtering ----------
 
   function applyFilters() {
-    const searchTerm = (
+    const search = (
       elements.searchInput?.value || ""
     ).trim().toLowerCase();
 
-    const selectedConsequence =
-      elements.consequenceFilter?.value || "";
+    const consequence = elements.consequenceFilter?.value || "all";
+    const classification = elements.classificationFilter?.value || "all";
 
-    const selectedClassification =
-      elements.classificationFilter?.value || "";
-
-    filteredVariants = variantData.filter((variant) => {
-      const searchableFields = [
-        variant.id,
-        variant.rsid,
-        variant.gene,
-        variant.chromosome,
-        variant.position,
-        variant.ref,
-        variant.alt,
-        variant.consequence,
-        variant.classification,
-        variant.impact
+    filteredVariants = allVariants.filter((record) => {
+      const searchable = [
+        record.id,
+        record.rsid,
+        record.gene,
+        record.transcript,
+        record.chromosome,
+        record.position,
+        record.ref,
+        record.alt,
+        record.consequence,
+        record.classification,
+        record.impact
       ];
 
-      const matchesSearch =
-        !searchTerm ||
-        searchableFields.some((field) =>
-          String(field ?? "").toLowerCase().includes(searchTerm)
-        );
+      const matchesSearch = !search || searchable.some((value) =>
+        String(value ?? "").toLowerCase().includes(search)
+      );
 
       const matchesConsequence =
-        !selectedConsequence ||
-        selectedConsequence === "all" ||
-        variant.consequence === selectedConsequence;
+        consequence === "all" ||
+        record.consequence === consequence;
 
       const matchesClassification =
-        !selectedClassification ||
-        selectedClassification === "all" ||
-        variant.classification === selectedClassification;
+        classification === "all" ||
+        record.classification === classification;
 
-      return (
-        matchesSearch &&
+      return matchesSearch &&
         matchesConsequence &&
-        matchesClassification
-      );
+        matchesClassification;
     });
 
     currentPage = 1;
-
     updateStatistics(filteredVariants);
     renderTable();
     updateCharts(filteredVariants);
   }
 
   function resetFilters() {
-    if (elements.searchInput) {
-      elements.searchInput.value = "";
-    }
-
-    if (elements.consequenceFilter) {
-      elements.consequenceFilter.value = "";
-    }
-
+    if (elements.searchInput) elements.searchInput.value = "";
+    if (elements.consequenceFilter) elements.consequenceFilter.value = "all";
     if (elements.classificationFilter) {
-      elements.classificationFilter.value = "";
+      elements.classificationFilter.value = "all";
     }
 
     applyFilters();
-    showToast("Filters have been reset.");
+    notify("Filters reset.");
   }
 
-  // ---------- Table rendering ----------
+  // ---------- Table ----------
 
   function renderTable() {
     if (!elements.tableBody) return;
 
-    const totalResults = filteredVariants.length;
-    const totalPages = Math.max(1, Math.ceil(totalResults / PAGE_SIZE));
+    const total = filteredVariants.length;
+    const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-    currentPage = Math.min(currentPage, totalPages);
+    currentPage = Math.min(currentPage, pages);
 
-    const startIndex = (currentPage - 1) * PAGE_SIZE;
-    const endIndex = Math.min(startIndex + PAGE_SIZE, totalResults);
-
-    const pageRecords = filteredVariants.slice(startIndex, endIndex);
+    const start = (currentPage - 1) * PAGE_SIZE;
+    const pageRecords = filteredVariants.slice(start, start + PAGE_SIZE);
+    const end = start + pageRecords.length;
 
     if (elements.resultCount) {
-      elements.resultCount.textContent = formatInteger(totalResults);
+      elements.resultCount.textContent =
+        `${numberLabel(total)} variants`;
     }
 
     if (elements.pageLabel) {
-      elements.pageLabel.textContent =
-        `Page ${currentPage} of ${totalPages}`;
+      elements.pageLabel.textContent = `Page ${currentPage} of ${pages}`;
     }
 
     if (elements.showingText) {
-      elements.showingText.textContent = totalResults === 0
-        ? "Showing 0 results"
-        : `Showing ${formatInteger(startIndex + 1)}–${formatInteger(endIndex)} of ${formatInteger(totalResults)}`;
+      elements.showingText.textContent = total
+        ? `Showing ${numberLabel(start + 1)}–${numberLabel(end)} of ${numberLabel(total)}`
+        : "Showing 0 variants";
     }
 
     if (elements.previousPage) {
@@ -238,59 +298,44 @@
     }
 
     if (elements.nextPage) {
-      elements.nextPage.disabled =
-        currentPage >= totalPages || totalResults === 0;
+      elements.nextPage.disabled = currentPage >= pages || total === 0;
     }
 
-    if (pageRecords.length === 0) {
+    if (!pageRecords.length) {
       elements.tableBody.innerHTML = `
         <tr>
           <td colspan="8" class="empty-state">
-            <strong>No matching variants found.</strong>
-            <br />
-            Try changing your search term or filters.
+            No variants found. Try changing your filters or upload a VCF file.
           </td>
         </tr>
       `;
       return;
     }
 
-    elements.tableBody.innerHTML = pageRecords.map((variant) => {
-      const impactClass =
-        typeof getImpactClass === "function"
-          ? getImpactClass(variant.impact)
-          : "badge-neutral";
+    elements.tableBody.innerHTML = pageRecords.map((record, index) => {
+      const impact = normalizeImpact(record.impact);
+      const impactClass = impact.toLowerCase();
 
       return `
         <tr>
           <td>
-            <span class="variant-id">${escapeHTML(variant.id)}</span>
-          </td>
-          <td>
-            <span class="gene-name">${escapeHTML(variant.gene)}</span>
-          </td>
-          <td>
-            <span class="mono">${escapeHTML(variant.chromosome)}:${formatPosition(variant.position)}</span>
-          </td>
-          <td>
-            <span class="mono">${escapeHTML(variant.ref)} → ${escapeHTML(variant.alt)}</span>
-          </td>
-          <td>${escapeHTML(variant.consequence)}</td>
-          <td>
-            <span class="badge ${escapeHTML(impactClass)}">
-              ${escapeHTML(variant.impact)}
-            </span>
-          </td>
-          <td>${escapeHTML(getFrequencyLabel(variant.alleleFrequency))}</td>
-          <td>
             <button
-              class="table-action"
               type="button"
-              data-variant-id="${escapeHTML(variant.id)}"
-              aria-label="View details for ${escapeHTML(variant.id)}"
-            >
-              View details
-            </button>
+              class="table-action"
+              data-record-index="${start + index}"
+              aria-label="View variant details"
+            >${escapeHTML(record.id || "Variant")}</button>
+          </td>
+          <td>${escapeHTML(record.chromosome ?? "N/A")}</td>
+          <td class="mono">${escapeHTML(record.position ?? "N/A")}</td>
+          <td>${escapeHTML(record.gene || "Pending annotation")}</td>
+          <td class="mono">${escapeHTML(record.ref || "N/A")}</td>
+          <td class="mono">${escapeHTML(record.alt || "N/A")}</td>
+          <td>${escapeHTML(record.consequence || "Pending annotation")}</td>
+          <td>
+            <span class="badge badge-${escapeHTML(impactClass)}">
+              ${escapeHTML(impact)}
+            </span>
           </td>
         </tr>
       `;
@@ -298,16 +343,15 @@
   }
 
   function changePage(direction) {
-    const totalPages = Math.max(
+    const pages = Math.max(
       1,
       Math.ceil(filteredVariants.length / PAGE_SIZE)
     );
 
-    const requestedPage = currentPage + direction;
+    const next = currentPage + direction;
+    if (next < 1 || next > pages) return;
 
-    if (requestedPage < 1 || requestedPage > totalPages) return;
-
-    currentPage = requestedPage;
+    currentPage = next;
     renderTable();
 
     elements.tableBody?.closest(".explorer-panel")?.scrollIntoView({
@@ -316,69 +360,60 @@
     });
   }
 
-  // ---------- Variant details dialog ----------
+  // ---------- Variant details ----------
 
-  function openVariantDetails(variantId) {
-    const variant = variantData.find(
-      (record) => record.id === variantId
-    );
-
-    if (!variant || !elements.dialog) return;
+  function openDetails(record) {
+    if (!record || !elements.dialog) return;
 
     if (elements.dialogTitle) {
       elements.dialogTitle.textContent =
-        `${variant.gene} · ${variant.id}`;
+        `${record.gene || "Gene pending"} · ${record.id || "Variant"}`;
     }
 
-    const detailItems = [
-      ["Variant ID", variant.id],
-      ["Reference ID", variant.rsid],
-      ["Gene", variant.gene],
-      ["Chromosome", variant.chromosome],
-      ["Position", formatPosition(variant.position)],
-      ["Reference allele", variant.ref],
-      ["Alternate allele", variant.alt],
-      ["Transcript", variant.transcript],
-      ["Consequence", variant.consequence],
-      ["Impact category", variant.impact],
-      ["Illustrative classification", variant.classification],
-      ["Allele frequency", getFrequencyLabel(variant.alleleFrequency)],
-      ["CADD score (illustrative)", formatOptionalScore(variant.caddScore)],
-      ["SIFT score (illustrative)", formatOptionalScore(variant.siftScore)],
-      ["PolyPhen score (illustrative)", formatOptionalScore(variant.polyphenScore)],
-      ["Inheritance label", variant.inheritance],
-      ["Record status", variant.reviewStatus]
+    const details = [
+      ["Variant ID", record.id],
+      ["Reference ID", record.rsid],
+      ["Chromosome", record.chromosome],
+      ["Position", record.position],
+      ["Reference allele", record.ref],
+      ["Alternate allele", record.alt],
+      ["Gene", record.gene],
+      ["Transcript", record.transcript],
+      ["Consequence", record.consequence],
+      ["Predicted impact", record.impact],
+      ["Classification", record.classification],
+      ["Allele frequency", frequencyLabel(record.alleleFrequency)],
+      ["Quality", record.quality],
+      ["VCF filter", record.reviewStatus],
+      ["Record source", record.source || dataSource]
     ];
 
-    const detailsHTML = detailItems.map(([label, value]) => `
+    const rows = details.map(([label, value]) => `
       <div class="detail-item">
         <span class="detail-label">${escapeHTML(label)}</span>
-        <div class="detail-value">${escapeHTML(value)}</div>
+        <div class="detail-value">${escapeHTML(value ?? "Not provided")}</div>
       </div>
     `).join("");
 
-    elements.dialogBody.innerHTML = `
-      <div class="detail-grid">
-        ${detailsHTML}
-      </div>
-      <div class="dialog-note">
-        <strong>Demo data only.</strong>
-        ${escapeHTML(variant.notes)}
-        These synthetic annotations are not clinically validated and
-        must not be used for diagnosis or treatment decisions.
-      </div>
-    `;
+    const note = dataSource === "uploaded"
+      ? "This record was parsed from an uploaded VCF. Gene and consequence annotations may be pending. No clinical interpretation has been performed."
+      : "This record comes from the synthetic demonstration dataset and is not real patient data.";
+
+    if (elements.dialogBody) {
+      elements.dialogBody.innerHTML = `
+        <div class="detail-grid">${rows}</div>
+        <div class="dialog-note">${escapeHTML(note)}</div>
+      `;
+    }
 
     if (typeof elements.dialog.showModal === "function") {
-      if (!elements.dialog.open) {
-        elements.dialog.showModal();
-      }
+      if (!elements.dialog.open) elements.dialog.showModal();
     } else {
       elements.dialog.setAttribute("open", "");
     }
   }
 
-  function closeVariantDetails() {
+  function closeDetails() {
     if (!elements.dialog) return;
 
     if (typeof elements.dialog.close === "function") {
@@ -391,22 +426,17 @@
   // ---------- Charts ----------
 
   function destroyCharts() {
-    if (consequenceChart) {
-      consequenceChart.destroy();
-      consequenceChart = null;
-    }
+    consequenceChart?.destroy();
+    frequencyChart?.destroy();
 
-    if (frequencyChart) {
-      frequencyChart.destroy();
-      frequencyChart = null;
-    }
+    consequenceChart = null;
+    frequencyChart = null;
   }
 
   function updateCharts(records) {
-    const consequenceCanvas = document.getElementById("consequence-chart");
-    const frequencyCanvas = document.getElementById("frequency-chart");
+    const consequenceCanvas = $("consequence-chart");
+    const frequencyCanvas = $("frequency-chart");
 
-    // Keep the rest of the application usable if Chart.js is unavailable.
     if (
       typeof Chart === "undefined" ||
       !consequenceCanvas ||
@@ -417,152 +447,74 @@
 
     destroyCharts();
 
-    const consequenceCounts = getConsequenceCounts(records);
-    const consequenceLabels = Object.keys(consequenceCounts);
-    const consequenceValues = Object.values(consequenceCounts);
+    const counts = {};
+    records.forEach((record) => {
+      const label = record.consequence || "Not provided";
+      counts[label] = (counts[label] || 0) + 1;
+    });
 
     consequenceChart = new Chart(consequenceCanvas, {
       type: "doughnut",
       data: {
-        labels: consequenceLabels,
+        labels: Object.keys(counts),
         datasets: [{
-          data: consequenceValues,
+          data: Object.values(counts),
           backgroundColor: [
-            "#5146e5",
-            "#0e9f9a",
-            "#e69b42",
-            "#d94f70",
-            "#7295e8",
-            "#9a78d7",
-            "#7d91a9",
-            "#55b99c"
+            "#5146e5", "#0e9f9a", "#e69b42", "#d94f70",
+            "#7295e8", "#9a78d7", "#7d91a9", "#55b99c"
           ],
           borderColor: "#ffffff",
-          borderWidth: 3,
-          hoverOffset: 7
+          borderWidth: 3
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        cutout: "64%",
         plugins: {
-          legend: {
-            position: "bottom",
-            labels: {
-              usePointStyle: true,
-              pointStyle: "circle",
-              padding: 15,
-              boxWidth: 7,
-              font: {
-                family: "DM Sans",
-                size: 10
-              }
-            }
-          },
-          tooltip: {
-            callbacks: {
-              label(context) {
-                const total = context.dataset.data.reduce(
-                  (sum, value) => sum + value,
-                  0
-                );
-
-                const percentage = total
-                  ? ((context.raw / total) * 100).toFixed(1)
-                  : "0.0";
-
-                return ` ${context.label}: ${context.raw} (${percentage}%)`;
-              }
-            }
-          }
+          legend: { position: "bottom" }
         }
       }
     });
 
-    const frequencyBuckets = [
-      { label: "< 0.1%", min: 0, max: 0.001 },
+    const buckets = [
+      { label: "<0.1%", min: 0, max: 0.001 },
       { label: "0.1–1%", min: 0.001, max: 0.01 },
       { label: "1–5%", min: 0.01, max: 0.05 },
       { label: "5–10%", min: 0.05, max: 0.1 },
-      { label: "≥ 10%", min: 0.1, max: Infinity }
+      { label: "≥10%", min: 0.1, max: Infinity }
     ];
 
-    const frequencyCounts = frequencyBuckets.map((bucket) =>
-      records.filter((variant) => {
-        const frequency = variant.alleleFrequency;
+    const frequencies = buckets.map((bucket) =>
+      records.filter((record) => {
+        const af = record.alleleFrequency;
 
-        return Number.isFinite(frequency) &&
-          frequency >= bucket.min &&
-          frequency < bucket.max;
+        return af !== null &&
+          af !== undefined &&
+          Number.isFinite(Number(af)) &&
+          Number(af) >= bucket.min &&
+          Number(af) < bucket.max;
       }).length
     );
 
     frequencyChart = new Chart(frequencyCanvas, {
       type: "bar",
       data: {
-        labels: frequencyBuckets.map((bucket) => bucket.label),
+        labels: buckets.map((bucket) => bucket.label),
         datasets: [{
-          label: "Variants",
-          data: frequencyCounts,
-          backgroundColor: [
-            "#5146e5",
-            "#7369eb",
-            "#0e9f9a",
-            "#58b8ac",
-            "#e69b42"
-          ],
-          borderRadius: 6,
-          maxBarThickness: 45
+          label: "Variants with frequency data",
+          data: frequencies,
+          backgroundColor: "#5146e5",
+          borderRadius: 6
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            display: false
-          },
-          tooltip: {
-            callbacks: {
-              label(context) {
-                return ` ${context.raw} variant(s)`;
-              }
-            }
-          }
-        },
+        plugins: { legend: { display: false } },
         scales: {
-          x: {
-            grid: {
-              display: false
-            },
-            ticks: {
-              color: "#77839b",
-              font: {
-                family: "DM Sans",
-                size: 10
-              }
-            },
-            border: {
-              display: false
-            }
-          },
           y: {
             beginAtZero: true,
-            ticks: {
-              precision: 0,
-              color: "#77839b",
-              font: {
-                family: "DM Sans",
-                size: 10
-              }
-            },
-            grid: {
-              color: "#edf0f6"
-            },
-            border: {
-              display: false
-            }
+            ticks: { precision: 0 }
           }
         }
       }
@@ -572,8 +524,8 @@
   // ---------- CSV export ----------
 
   function exportCSV() {
-    if (filteredVariants.length === 0) {
-      showToast("No variants to export. Adjust your filters first.");
+    if (!filteredVariants.length) {
+      notify("No variants to export.");
       return;
     }
 
@@ -587,58 +539,80 @@
       ["ref", "Reference allele"],
       ["alt", "Alternate allele"],
       ["consequence", "Consequence"],
-      ["classification", "Demo classification"],
-      ["impact", "Impact category"],
+      ["impact", "Predicted impact"],
+      ["classification", "Classification"],
       ["alleleFrequency", "Allele frequency"],
-      ["caddScore", "Illustrative CADD score"],
-      ["siftScore", "Illustrative SIFT score"],
-      ["polyphenScore", "Illustrative PolyPhen score"],
-      ["inheritance", "Inheritance label"],
-      ["reviewStatus", "Record status"],
-      ["notes", "Notes"]
+      ["quality", "Quality"],
+      ["reviewStatus", "VCF filter"],
+      ["source", "Record source"]
     ];
 
-    function escapeCSV(value) {
-      const normalized = value === null || value === undefined
+    const csvCell = (value) => {
+      const text = value === null || value === undefined
         ? ""
         : String(value);
 
-      return `"${normalized.replace(/"/g, '""')}"`;
-    }
+      return `"${text.replace(/"/g, '""')}"`;
+    };
 
     const rows = [
-      [
-        "VariantScope synthetic demo dataset",
-        "Not for clinical use"
-      ],
       columns.map(([, heading]) => heading),
-      ...filteredVariants.map((variant) =>
-        columns.map(([key]) => variant[key] ?? "")
+      ...filteredVariants.map((record) =>
+        columns.map(([key]) => record[key] ?? "")
       )
     ];
 
-    const csvContent = "\uFEFF" +
-      rows.map((row) => row.map(escapeCSV).join(",")).join("\r\n");
+    const csv = "\uFEFF" +
+      rows.map((row) => row.map(csvCell).join(",")).join("\r\n");
 
-    const blob = new Blob([csvContent], {
+    const blob = new Blob([csv], {
       type: "text/csv;charset=utf-8;"
     });
 
-    const downloadURL = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
 
-    link.href = downloadURL;
-    link.download = "variantscope-synthetic-variants.csv";
-    link.style.display = "none";
+    link.href = url;
+    link.download = dataSource === "uploaded"
+      ? "variantscope-uploaded-vcf-records.csv"
+      : "variantscope-demo-records.csv";
 
     document.body.appendChild(link);
     link.click();
     link.remove();
 
-    URL.revokeObjectURL(downloadURL);
-
-    showToast(`Exported ${filteredVariants.length} synthetic variant records.`);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    notify(`Exported ${filteredVariants.length} records.`);
   }
+
+  // ---------- Public upload integration ----------
+
+  function renderUploadedVariants(records) {
+    if (!Array.isArray(records)) {
+      throw new Error("Uploaded variants must be an array.");
+    }
+
+    allVariants = records.map((record) => ({
+      ...record,
+      source: "Uploaded VCF"
+    }));
+
+    dataSource = "uploaded";
+    currentPage = 1;
+
+    if (elements.searchInput) elements.searchInput.value = "";
+    populateFilterOptions();
+
+    filteredVariants = [...allVariants];
+    updateStatistics(filteredVariants);
+    renderTable();
+    updateCharts(filteredVariants);
+
+    notify(`Loaded ${allVariants.length} VCF variant records.`);
+  }
+
+  // upload.js calls this function after parsing the selected VCF.
+  window.renderUploadedVariants = renderUploadedVariants;
 
   // ---------- Event listeners ----------
 
@@ -657,86 +631,48 @@
 
     elements.resetButton?.addEventListener("click", resetFilters);
 
-    elements.previousPage?.addEventListener("click", () => {
-      changePage(-1);
-    });
-
-    elements.nextPage?.addEventListener("click", () => {
-      changePage(1);
-    });
+    elements.previousPage?.addEventListener("click", () => changePage(-1));
+    elements.nextPage?.addEventListener("click", () => changePage(1));
 
     elements.exportButton?.addEventListener("click", exportCSV);
+    elements.closeDialog?.addEventListener("click", closeDetails);
 
     elements.tableBody?.addEventListener("click", (event) => {
-      const button = event.target.closest("[data-variant-id]");
-
+      const button = event.target.closest("[data-record-index]");
       if (!button) return;
 
-      openVariantDetails(button.dataset.variantId);
+      const index = Number(button.dataset.recordIndex);
+      openDetails(filteredVariants[index]);
     });
-
-    elements.closeDialog?.addEventListener(
-      "click",
-      closeVariantDetails
-    );
 
     elements.dialog?.addEventListener("click", (event) => {
-      if (event.target === elements.dialog) {
-        closeVariantDetails();
-      }
+      if (event.target === elements.dialog) closeDetails();
     });
 
-    document.addEventListener("keydown", (event) => {
-      if (
-        event.key === "Escape" &&
-        elements.dialog?.open
-      ) {
-        closeVariantDetails();
-      }
-    });
+    elements.consequenceFilter &&
+      (elements.consequenceFilter.value = "all");
 
-    // Sidebar links navigate to matching sections when those IDs exist.
-    document.querySelectorAll(".sidebar nav a").forEach((link) => {
-      link.addEventListener("click", (event) => {
-        const href = link.getAttribute("href");
-
-        if (!href || !href.startsWith("#")) return;
-
-        const target = document.querySelector(href);
-
-        if (target) {
-          event.preventDefault();
-          target.scrollIntoView({
-            behavior: "smooth",
-            block: "start"
-          });
-
-          document.querySelectorAll(".sidebar nav a").forEach((item) => {
-            item.classList.remove("active");
-          });
-
-          link.classList.add("active");
-        }
-      });
-    });
+    elements.classificationFilter &&
+      (elements.classificationFilter.value = "all");
   }
 
-  // ---------- Initialise ----------
+  // ---------- Startup ----------
 
   function init() {
     if (!Array.isArray(variantData)) {
-      console.error("VariantScope: variantData is missing or invalid.");
-      showToast("Could not load the demo dataset.");
+      console.error("VariantScope: data.js did not load.");
+      notify("Could not load initial data.");
       return;
     }
 
     bindEvents();
-    updateStatistics(variantData);
+    populateFilterOptions();
+    updateStatistics(allVariants);
     renderTable();
-    updateCharts(variantData);
+    updateCharts(allVariants);
 
     console.info(
-      `VariantScope ready: ${variantData.length} synthetic demo records loaded.`
+      `VariantScope ready with ${allVariants.length} demo records.`
     );
   }
 
