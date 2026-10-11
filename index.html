@@ -1,41 +1,344 @@
 
-<section class="upload-panel" aria-labelledby="upload-heading">
-  <div class="upload-heading">
-    <div>
-      <h2 id="upload-heading">Analyze your VCF</h2>
-      <p>Upload a VCF file to inspect and annotate genomic variants.</p>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="VariantScope: a genomic variant exploration and annotation dashboard.">
+  <title>VariantScope | Genomic Variant Explorer</title>
+
+  <link rel="stylesheet" href="styles.css">
+
+  <style>
+    .upload-panel {
+      background: var(--panel, #ffffff);
+      border: 1px solid var(--border, #e5e7eb);
+      border-radius: 14px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .upload-heading {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .upload-heading h2 {
+      margin: 0 0 8px;
+    }
+
+    .upload-heading p,
+    #selected-file-name,
+    #upload-status {
+      color: var(--muted, #64748b);
+      font-size: 0.9rem;
+    }
+
+    .upload-badge {
+      background: #e0f2fe;
+      color: #075985;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .vcf-dropzone {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      padding: 28px 16px;
+      border: 2px dashed #94a3b8;
+      border-radius: 12px;
+      text-align: center;
+      cursor: pointer;
+    }
+
+    .vcf-dropzone:hover {
+      border-color: #0284c7;
+      background: #f0f9ff;
+    }
+
+    .upload-icon {
+      font-size: 2rem;
+      color: #0284c7;
+    }
+
+    .vcf-dropzone input {
+      max-width: 100%;
+    }
+
+    .upload-options {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 18px 0;
+      flex-wrap: wrap;
+    }
+
+    .upload-options select {
+      padding: 8px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+    }
+
+    #annotate-btn {
+      padding: 11px 18px;
+      border: none;
+      border-radius: 8px;
+      background: #0369a1;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    #annotate-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    #upload-status {
+      margin-bottom: 0;
+    }
+
+    .table-wrapper {
+      overflow-x: auto;
+      width: 100%;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 28px;
+      color: #64748b;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app-shell">
+
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">V</span>
+        <div>
+          <h1>VariantScope</h1>
+          <p>Genomic Variant Explorer</p>
+        </div>
+      </div>
+
+      <nav aria-label="Main navigation">
+        <a href="#overview" class="nav-link active">Overview</a>
+        <a href="#upload" class="nav-link">Upload VCF</a>
+        <a href="#explorer" class="nav-link">Variant Explorer</a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <p>Research prototype</p>
+        <p>Not for clinical diagnosis</p>
+      </div>
+    </aside>
+
+    <main class="main-content">
+
+      <header class="page-header" id="overview">
+        <div>
+          <p class="eyebrow">COMPUTATIONAL GENOMICS</p>
+          <h1>Genomic Variant Explorer</h1>
+          <p>Explore variant records, inspect annotations and review genomic features.</p>
+        </div>
+      </header>
+
+      <section class="notice" role="note">
+        <strong>Research use only.</strong>
+        The built-in example dataset contains synthetic records.
+        Uploaded VCF records are separate. Variant annotations are predictions
+        and must not be interpreted as a clinical diagnosis.
+      </section>
+
+      <section class="upload-panel" id="upload"
+        aria-labelledby="upload-heading">
+
+        <div class="upload-heading">
+          <div>
+            <h2 id="upload-heading">Analyze your VCF</h2>
+            <p>Upload an uncompressed VCF file to inspect real variant records.</p>
+          </div>
+          <span class="upload-badge">VCF INPUT</span>
+        </div>
+
+        <label for="vcf-file" class="vcf-dropzone">
+          <span class="upload-icon" aria-hidden="true">↑</span>
+          <strong>Choose a VCF file</strong>
+          <span>Supported in this version: uncompressed .vcf</span>
+          <input
+            id="vcf-file"
+            type="file"
+            accept=".vcf,text/plain"
+          >
+        </label>
+
+        <p id="selected-file-name" aria-live="polite">
+          No file selected
+        </p>
+
+        <div class="upload-options">
+          <label for="genome-build">Reference assembly</label>
+          <select id="genome-build">
+            <option value="GRCh38">GRCh38</option>
+            <option value="GRCh37">GRCh37</option>
+          </select>
+        </div>
+
+        <button id="annotate-btn" type="button" disabled>
+          Parse VCF
+        </button>
+
+        <p id="upload-status" role="status" aria-live="polite">
+          Select a VCF file to begin.
+        </p>
+      </section>
+
+      <section class="stats-grid" aria-label="Variant statistics">
+        <article class="stat-card">
+          <p>Total variants</p>
+          <strong id="total-variants">0</strong>
+        </article>
+
+        <article class="stat-card">
+          <p>Unique genes</p>
+          <strong id="unique-genes">0</strong>
+        </article>
+
+        <article class="stat-card">
+          <p>High-impact variants</p>
+          <strong id="high-scores">0</strong>
+        </article>
+
+        <article class="stat-card">
+          <p>Rare variants</p>
+          <strong id="rare-variants">0</strong>
+        </article>
+      </section>
+
+      <section class="charts-grid" aria-label="Variant visualizations">
+        <article class="chart-card">
+          <h2>Variant consequences</h2>
+          <canvas id="consequence-chart"
+            aria-label="Variant consequences chart"></canvas>
+        </article>
+
+        <article class="chart-card">
+          <h2>Allele frequency</h2>
+          <canvas id="frequency-chart"
+            aria-label="Allele frequency chart"></canvas>
+        </article>
+      </section>
+
+      <section class="explorer-panel" id="explorer">
+        <div class="panel-header">
+          <div>
+            <h2>Variant Explorer</h2>
+            <p>Search and filter the available variant records.</p>
+          </div>
+
+          <button id="export-btn" type="button">
+            Export CSV
+          </button>
+        </div>
+
+        <div class="filter-bar">
+          <label for="search-input">Search variants</label>
+          <input
+            id="search-input"
+            type="search"
+            placeholder="Search gene, variant ID or chromosome..."
+          >
+
+          <label for="consequence-filter">Consequence</label>
+          <select id="consequence-filter">
+            <option value="all">All consequences</option>
+          </select>
+
+          <label for="classification-filter">Classification</label>
+          <select id="classification-filter">
+            <option value="all">All classifications</option>
+          </select>
+
+          <button id="reset-btn" type="button">Reset filters</button>
+        </div>
+
+        <p id="result-count" aria-live="polite">0 variants</p>
+
+        <div class="table-wrapper">
+          <table class="variant-table">
+            <thead>
+              <tr>
+                <th scope="col">Variant ID</th>
+                <th scope="col">Chromosome</th>
+                <th scope="col">Position</th>
+                <th scope="col">Gene</th>
+                <th scope="col">Reference</th>
+                <th scope="col">Alternate</th>
+                <th scope="col">Consequence</th>
+                <th scope="col">Impact</th>
+              </tr>
+            </thead>
+            <tbody id="variant-rows">
+              <tr>
+                <td colspan="8" class="empty-state">
+                  Example records will appear here when the dashboard loads.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="pagination">
+          <p id="showing-text">Showing 0 variants</p>
+          <div>
+            <button id="prev-page" type="button" disabled>
+              Previous
+            </button>
+            <span id="page-label">Page 1</span>
+            <button id="next-page" type="button" disabled>
+              Next
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <footer class="page-footer">
+        <p>
+          VariantScope · Educational and research prototype ·
+          Not a clinically validated diagnostic tool
+        </p>
+      </footer>
+
+    </main>
+  </div>
+
+  <dialog id="variant-dialog" class="variant-dialog">
+    <div class="dialog-header">
+      <h2 id="dialog-title">Variant details</h2>
+      <button id="close-dialog" type="button"
+        aria-label="Close variant details">×</button>
     </div>
-    <span class="upload-badge">REAL DATA</span>
-  </div>
+    <div id="dialog-body"></div>
+  </dialog>
 
-  <label for="vcf-file" class="vcf-dropzone">
-    <span class="upload-icon">↑</span>
-    <strong>Choose a VCF file</strong>
-    <span>Supported format: .vcf or .vcf.gz*</span>
-    <input
-      id="vcf-file"
-      type="file"
-      accept=".vcf,.gz,.vcf.gz,text/plain"
-    />
-  </label>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <p id="selected-file-name" aria-live="polite">
-    No file selected
-  </p>
+  <!-- Load dependencies before the scripts that use them. -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="data.js"></script>
+  <script src="vcf.js"></script>
+  <script src="app.js"></script>
+  <script src="upload.js"></script>
+</body>
+</html>
 
-  <div class="upload-options">
-    <label for="genome-build">Reference assembly</label>
-    <select id="genome-build">
-      <option value="GRCh38">GRCh38</option>
-      <option value="GRCh37">GRCh37</option>
-    </select>
-  </div>
-
-  <button id="annotate-btn" type="button" disabled>
-    Parse and annotate variants
-  </button>
-
-  <p id="upload-status" role="status" aria-live="polite">
-    Select a VCF file to begin.
-  </p>
-</section>
